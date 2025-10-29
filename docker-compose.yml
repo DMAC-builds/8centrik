@@ -1,0 +1,41 @@
+services:
+  dev:
+    build: .
+    container_name: v0-dev-container
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=development
+      - NEXT_TELEMETRY_DISABLED=1
+    networks:
+      - v0-network
+    depends_on:
+      - kroger-mcp
+    stdin_open: true
+    tty: true
+
+  kroger-mcp:
+    build: ./mcp-kroger-server
+    container_name: kroger-mcp-server
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./mcp-kroger-server:/app
+      - /app/node_modules
+    env_file:
+      - ./mcp-kroger-server/.env
+    environment:
+      - NODE_ENV=development
+    networks:
+      - v0-network
+    stdin_open: true
+    tty: true
+
+networks:
+  v0-network:
+    driver: bridge
