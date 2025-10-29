@@ -82,7 +82,17 @@ CREATE TABLE public.ai_reports (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Step 7: Create indexes
+-- Step 7: Drop existing indexes if they exist
+DROP INDEX IF EXISTS public.idx_survey_questions_code;
+DROP INDEX IF EXISTS public.idx_survey_questions_active;
+DROP INDEX IF EXISTS public.idx_survey_sessions_user_id;
+DROP INDEX IF EXISTS public.idx_survey_sessions_status;
+DROP INDEX IF EXISTS public.idx_survey_responses_session_id;
+DROP INDEX IF EXISTS public.idx_survey_responses_user_id;
+DROP INDEX IF EXISTS public.idx_ai_reports_user_id;
+DROP INDEX IF EXISTS public.idx_ai_reports_status;
+
+-- Step 8: Create indexes
 CREATE INDEX idx_survey_questions_code ON public.survey_questions(code);
 CREATE INDEX idx_survey_questions_active ON public.survey_questions(is_active, version);
 CREATE INDEX idx_survey_sessions_user_id ON public.survey_sessions(user_id);
@@ -92,12 +102,12 @@ CREATE INDEX idx_survey_responses_user_id ON public.survey_responses(user_id);
 CREATE INDEX idx_ai_reports_user_id ON public.ai_reports(user_id);
 CREATE INDEX idx_ai_reports_status ON public.ai_reports(status);
 
--- Step 8: Enable RLS
+-- Step 9: Enable RLS
 ALTER TABLE public.survey_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.survey_responses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_reports ENABLE ROW LEVEL SECURITY;
 
--- Step 9: Create RLS policies
+-- Step 10: Create RLS policies
 CREATE POLICY "sessions_select_own" ON public.survey_sessions
   FOR SELECT USING (user_id = auth.uid());
 
@@ -122,7 +132,7 @@ CREATE POLICY "ai_reports_select_own" ON public.ai_reports
 CREATE POLICY "ai_reports_insert_own" ON public.ai_reports
   FOR INSERT WITH CHECK (user_id = auth.uid());
 
--- Step 10: Create triggers
+-- Step 11: Create triggers
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -139,7 +149,7 @@ CREATE TRIGGER update_ai_reports_updated_at
   BEFORE UPDATE ON public.ai_reports 
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Step 11: Success message
+-- Step 12: Success message
 DO $$ 
 BEGIN
   RAISE NOTICE '✅ Survey AI Insights schema created successfully!';
