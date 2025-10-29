@@ -194,8 +194,127 @@ When helping with this project:
 
 ## Testing & Verification
 - Health check: `curl http://localhost:3001/health`
-- App access: `http://localhost:3000` (production), `http://localhost:3002` (staging)
+- App access: `http://localhost:3000` (production)
 - Container logs: `docker logs [container-name]`
 - Network connectivity: All containers on `v0-network` bridge
+
+## Git & Version Control
+
+### Repository Information
+- **GitHub**: https://github.com/DMAC-builds/8centrik
+- **SSH**: git@github.com:DMAC-builds/8centrik.git
+- **Main Branch**: `main` (production-ready code)
+
+### Branching Strategy (Simple Flow - Solo Development)
+```
+main          ─────●─────●─────●──────  (production releases)
+                    │     │     │
+develop      ───────┴──●──┴──●──┴──────  (active development)
+                       │     │
+feature/*    ──────────┴─────┴─────────  (new features)
+```
+
+**Branch Structure:**
+- `main` - Production-ready code, deployed to containers 3000/3001
+- `develop` - Integration branch for active development
+- `feature/*` - Feature branches (e.g., `feature/meal-planning-v2`)
+- `bugfix/*` - Bug fix branches
+- `hotfix/*` - Emergency production fixes
+
+### Git Workflow
+
+**Daily Development:**
+```bash
+# Start new feature
+git checkout develop
+git pull origin develop
+git checkout -b feature/new-feature-name
+
+# Make changes, test in containers
+# Containers use volume mounts, so changes are instant
+
+# Commit work
+git add .
+git commit -m "feat: descriptive message"
+
+# Push to GitHub
+git push -u origin feature/new-feature-name
+
+# Merge to develop when ready
+git checkout develop
+git merge feature/new-feature-name
+git push origin develop
+
+# Deploy to production (merge to main)
+git checkout main
+git merge develop
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin main --tags
+```
+
+**Container Integration:**
+- Containers use **volume mounts** (`.:/app`) for live code updates
+- Switching branches updates code in running containers instantly
+- No rebuild needed for code changes
+- Restart container if dependencies change: `docker restart v0-dev-container`
+
+**Commit Message Convention:**
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation changes
+- `style:` - Code style changes (formatting, etc.)
+- `refactor:` - Code refactoring
+- `test:` - Adding/updating tests
+- `chore:` - Maintenance tasks
+
+### Important Git Rules
+1. **Never commit secrets** - All `.env` files are gitignored
+2. **Always pull before push** - Avoid merge conflicts
+3. **Test before merging to main** - Ensure containers work
+4. **Use descriptive commit messages** - Future you will thank you
+5. **Tag releases** - Use semantic versioning (v1.0.0, v1.1.0, etc.)
+
+### SSH Authentication Configured
+- SSH key generated and added to GitHub
+- No password required for git operations
+- Key location: `~/.ssh/id_ed25519`
+
+### File Management
+- Project files tracked by Git in: `app/`, `components/`, `lib/`, `mcp-kroger-server/`, etc.
+- Personal files relocated to: `~/Documents/8centrik-personal-files/`
+- `.gitignore` prevents accidental commits of personal files
+
+## Future Enhancements
+
+### Staging Environment (When Needed)
+Create `docker-compose.staging.yml`:
+```yaml
+services:
+  staging:
+    build: .
+    container_name: 8centrik-staging
+    ports:
+      - "3002:3000"
+    volumes:
+      - .:/app
+    env_file:
+      - .env.staging
+    networks:
+      - v0-network
+```
+
+Deploy staging from `develop` branch:
+```bash
+git checkout develop
+docker-compose -f docker-compose.staging.yml up -d
+```
+
+### CI/CD Pipeline (GitHub Actions)
+Directory structure ready: `.github/workflows/`
+
+Future workflows:
+- `ci.yml` - Run tests and linting on PR
+- `deploy-staging.yml` - Auto-deploy develop branch to staging
+- `deploy-production.yml` - Deploy main branch to production
 
 This context should help maintain continuity across Warp sessions and provide comprehensive project understanding for AI assistance.
