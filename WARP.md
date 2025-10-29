@@ -317,4 +317,208 @@ Future workflows:
 - `deploy-staging.yml` - Auto-deploy develop branch to staging
 - `deploy-production.yml` - Deploy main branch to production
 
+## MVP Deployment Architecture (Vercel + Railway Strategy)
+
+### Production Deployment Strategy
+**Status**: Planned - Not yet implemented
+
+### Architecture Overview
+```
+User → Vercel (Frontend + API) → Railway (MCP Server) → Supabase (Database)
+                                     ↓
+                              Kroger API (OAuth)
+```
+
+### Production Stack
+
+**Frontend Hosting: Vercel (FREE tier)**
+- Next.js application (React UI)
+- API routes (serverless functions)
+- Automatic deployments from GitHub
+- Preview URLs for every PR
+- Custom domain support
+- Global CDN (fast worldwide)
+- SSL certificates (automatic)
+
+**Backend Hosting: Railway (FREE $5 credit/month)**
+- MCP Kroger Server (Express.js)
+- Kroger OAuth integration
+- Meal plan generation
+- Product search and cart management
+- Persistent storage for tokens
+- Auto-deploys from GitHub
+
+**Database: Supabase (FREE tier)**
+- PostgreSQL database
+- Authentication system
+- Row Level Security (RLS)
+- File storage
+- Already configured
+
+**Total MVP Cost**: ~$0-1/month (domain only)
+
+### Deployment Workflow
+
+**Local Development (Current)**
+```bash
+# Docker with hot reload (ports 3000/3001)
+docker-compose up
+# Edit code → instant updates
+git checkout -b feature/new-feature
+git commit -m "feat: add feature"
+git push origin feature/new-feature
+```
+
+**Automated Preview Deployments**
+```
+PR created → Vercel auto-deploys to:
+https://8centrik-git-feature-name-dmac.vercel.app
+
+Share URL for testing before merge
+```
+
+**Staging Deployment**
+```bash
+git checkout develop
+git merge feature/new-feature
+git push origin develop
+
+→ Vercel deploys to:
+https://8centrik-git-develop-dmac.vercel.app
+```
+
+**Production Deployment**
+```bash
+git checkout main
+git merge develop
+git tag -a v1.0.0 -m "Release 1.0.0"
+git push origin main --tags
+
+→ Vercel deploys to:
+https://8centrik.vercel.app (or custom domain)
+```
+
+### Environment Configuration
+
+**Vercel Environment Variables** (Set in Vercel Dashboard)
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
+NEXT_PUBLIC_MCP_SERVER_URL=https://kroger-mcp.railway.app
+NODE_ENV=production
+```
+
+**Railway Environment Variables** (Set in Railway Dashboard)
+```env
+KROGER_CLIENT_ID=xxx
+KROGER_CLIENT_SECRET=xxx
+KROGER_REDIRECT_URI=https://kroger-mcp.railway.app/auth/callback
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_KEY=xxx
+PORT=3001
+NODE_ENV=production
+```
+
+### Deployment Setup Steps (When Ready)
+
+**1. Vercel Setup**
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Link repository
+vercel link
+
+# Deploy
+vercel --prod
+```
+
+**2. Railway Setup**
+```bash
+# Install Railway CLI
+npm i -g @railway/cli
+
+# Login and link project
+railway login
+railway init
+
+# Deploy MCP server
+railway up
+```
+
+**3. Configure DNS** (Optional - for custom domain)
+```
+Add CNAME record:
+8centrik.com → cname.vercel-dns.com
+```
+
+### Why This Architecture?
+
+**For Non-Technical Founders:**
+- ✅ **Zero server management** - Fully managed platforms
+- ✅ **Git-based deployments** - Push = deploy
+- ✅ **Free for MVP** - Scale costs with revenue
+- ✅ **Automatic HTTPS** - Security built-in
+- ✅ **Preview deployments** - Test before production
+- ✅ **Warp-friendly** - AI can deploy via CLI
+
+**Scaling Path:**
+- **0-100 users**: Free tier (Vercel + Railway credit + Supabase)
+- **100-1000 users**: ~$25/month (Vercel Pro + Railway + Supabase Pro)
+- **1000+ users**: ~$100-200/month (Professional tiers)
+
+### Alternative Considered: All-Docker
+
+**Why NOT chosen for production:**
+- ❌ Requires server management (DigitalOcean, AWS)
+- ❌ Manual scaling configuration
+- ❌ SSL certificate setup needed
+- ❌ More complex for non-technical founders
+- ❌ Higher monthly cost ($20+ minimum)
+- ❌ No automatic preview deployments
+
+**Docker still used for:**
+- ✅ Local development (hot reload)
+- ✅ Local staging tests (optional)
+- ✅ Consistent dev environment
+
+### File Structure (Planned)
+```
+v0-app/
+├── docker-compose.yml              # Dev environment (keep)
+├── docker-compose.staging.yml      # Local staging test (optional)
+├── vercel.json                     # Vercel configuration (to create)
+├── .github/
+│   └── workflows/
+│       ├── ci.yml                  # Test on PR (to create)
+│       └── preview.yml             # Preview comments (optional)
+├── .env.local                      # Dev secrets (gitignored)
+├── .env.example                    # Template for deployment
+└── railway.toml                    # Railway config (auto-generated)
+```
+
+### Deployment Checklist (When Ready to Deploy)
+
+**Pre-Deployment:**
+- [ ] Create Vercel account
+- [ ] Create Railway account  
+- [ ] Review environment variables
+- [ ] Test production build locally
+- [ ] Prepare custom domain (optional)
+
+**Initial Deployment:**
+- [ ] Connect GitHub to Vercel
+- [ ] Deploy MCP server to Railway
+- [ ] Configure environment variables
+- [ ] Test Vercel → Railway connection
+- [ ] Verify Kroger OAuth flow
+- [ ] Test end-to-end meal planning
+
+**Post-Deployment:**
+- [ ] Monitor Railway logs
+- [ ] Check Vercel analytics
+- [ ] Set up error monitoring (Sentry - optional)
+- [ ] Document deployment process
+- [ ] Create rollback procedure
+
 This context should help maintain continuity across Warp sessions and provide comprehensive project understanding for AI assistance.
