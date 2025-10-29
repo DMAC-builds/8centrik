@@ -521,4 +521,552 @@ v0-app/
 - [ ] Document deployment process
 - [ ] Create rollback procedure
 
+## Survey → AI Insights Feature (In Progress)
+
+### Current Status: Database Layer Complete ✅
+
+**Completed:**
+- ✅ Database schema created (survey_questions, survey_sessions, survey_responses, ai_reports)
+- ✅ RLS policies with auth.uid()
+- ✅ Connected to production Supabase (sfirayzjkugowzeyuyns)
+- ✅ Migration script: `database/migrations/001_survey_ai_insights.sql`
+- ✅ Seed script: `scripts/seed-survey-questions.js`
+- ✅ Feature branch: `feature/survey-ai-insights`
+
+**POC Approach:**
+- Using 1-5 scale (existing UI)
+- Will map to 1-3 for AI processing
+- Migration to 1-3 scale deferred to post-POC
+
+### Implementation Roadmap (Remaining Work: ~16 hours)
+
+#### **Story 2-3: Survey UI with Database Loading** (3 hours)
+**Goal:** Update questionnaire component to load questions from database
+
+**Files to modify:**
+- `app/components/onboarding/onboarding-questionnaire.tsx`
+
+**Tasks:**
+1. Add Supabase client to fetch questions:
+```typescript
+const { data: questions } = await supabase
+  .from('survey_questions')
+  .select('*')
+  .eq('is_active', true)
+  .eq('version', 1)
+  .order('code');
+```
+
+2. Create or resume session:
+```typescript
+const { data: session } = await supabase
+  .from('survey_sessions')
+  .select('*')
+  .eq('user_id', user.id)
+  .eq('status', 'in_progress')
+  .order('started_at', { ascending: false })
+  .limit(1)
+  .single();
+
+if (!session) {
+  const { data: newSession } = await supabase
+    .from('survey_sessions')
+    .insert({ user_id: user.id, version: 1 })
+    .select()
+    .single();
+}
+```
+
+3. Implement UPSERT for answer saves:
+```typescript
+const saveAnswer = async (questionId: string, value: number) => {
+  await supabase
+    .from('survey_responses')
+    .upsert({
+      session_id: sessionId,
+      user_id: user.id,
+      question_id: questionId,
+      answer_value: value
+    }, {
+      onConflict: 'session_id,question_id'
+    });
+};
+```
+
+4. Add debounce (300ms) to prevent excessive writes
+5. Show "Saving..." indicator during writes
+6. On submit: set session status to 'submitted'
+
+**Testing:**
+- Log in as test user
+- Answer questions → verify saves to database
+- Refresh page → verify session resumes
+- Submit → verify status changes
+
+---
+
+#### **Story 4-5: Processing Screen** (2 hours)
+**Goal:** Show processing animation and poll for AI results
+
+**Files to create:**
+- `app/setup/processing/page.tsx`
+
+**Tasks:**
+1. Create processing page component:
+```typescript
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+
+export default function ProcessingPage() {
+  const [status, setStatus] = useState<'processing' | 'succeeded' | 'failed'>('processing')
+  const router = useRouter()
+
+  useEffect(() => {
+    const pollResults = setInterval(async () => {
+      const { data: report } = await supabase
+        .from('ai_reports')
+        .select('status')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      
+      if (report?.status === 'succeeded') {
+        setStatus('succeeded')
+        clearInterval(pollResults)
+      } else if (report?.status === 'failed') {
+        setStatus('failed')
+        clearInterval(pollResults)
+      }
+    }, 1500) // Poll every 1.5s
+
+    return () => clearInterval(pollResults)
+  }, [])
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen">
+      <h1>You've completed the survey!</h1>
+      {status === 'processing' && (
+        <>
+          <div className="animate-spin">Processing your data...</div>
+          <div className="w-full max-w-md aspect-video border-2 border-dashed">
+            What to expect (coming soon)
+          </div>
+        </>
+      )}
+      {status === 'succeeded' && (
+        <button onClick={() => router.push('/insights/latest')}>
+          View my results
+        </button>
+      )}
+      {status === 'failed' && (
+        <div>
+          <p>Something went wrong</p>
+          <button onClick={() => triggerRegeneration()}>Try again</button>
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+2. Add 16:9 placeholder for video (TODO P2)
+3. Route from questionnaire submit to /setup/processing
+
+**Testing:**
+- Submit survey → redirects to processing
+- Verify polling starts
+- Mock AI report status changes
+
+---
+
+#### **Story 6-8: Backend OpenAI Integration** (6 hours)
+**Goal:** Add OpenAI to MCP server, create endpoints
+
+**Files to modify:**
+- `mcp-kroger-server/package.json` - Add openai dependency
+- `mcp-kroger-server/src/index.ts` - Add endpoints
+- `mcp-kroger-server/.env` - Add OPENAI_API_KEY
+
+**Tasks:**
+
+1. Install OpenAI SDK:
+```bash
+cd mcp-kroger-server
+npm install openai
+```
+
+2. Add environment variable:
+```env
+OPENAI_API_KEY=sk-...
+MODEL_NAME=gpt-4o-mini
+```
+
+3. Create mapping function (1-5 → 1-3):
+```typescript
+// POC: Map 1-5 scale to 1-3 for AI
+// TODO P2: Remove after UI migrates to 1-3
+function mapToThreeScale(value: number): 1 | 2 | 3 {
+  if (value <= 2) return 1; // Low
+  if (value <= 4) return 2; // Moderate
+  return 3; // High
+}
+```
+
+4. Create endpoint: `POST /v1/insights/generate`
+```typescript
+import OpenAI from 'openai'
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+})
+
+app.post('/v1/insights/generate', async (req, res) => {
+  const userId = req.body.user_id // TODO: Get from auth token
+  
+  // Get latest submitted session
+  const { data: session } = await supabase
+    .from('survey_sessions')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('status', 'submitted')
+    .order('submitted_at', { ascending: false })
+    .limit(1)
+    .single()
+  
+  // Get answered questions (only 1-5, map to 1-3)
+  const { data: responses } = await supabase
+    .from('survey_responses')
+    .select(`
+      answer_value,
+      survey_questions (question_text)
+    `)
+    .eq('session_id', session.id)
+    .not('answer_value', 'is', null)
+  
+  const items = responses.map(r => ({
+    q: r.survey_questions.question_text,
+    a: mapToThreeScale(r.answer_value) // Map to 1-3
+  }))
+  
+  // Create AI report record
+  const { data: report } = await supabase
+    .from('ai_reports')
+    .insert({
+      user_id: userId,
+      session_id: session.id,
+      status: 'processing',
+      input_items_count: items.length
+    })
+    .select()
+    .single()
+  
+  const started = Date.now()
+  
+  try {
+    const completion = await openai.chat.completions.create({
+      model: process.env.MODEL_NAME || 'gpt-4o-mini',
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: SYSTEM_PROMPT // From original spec
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({
+            survey: { items }
+          })
+        }
+      ]
+    })
+    
+    const resultText = completion.choices[0]?.message?.content || '{}'
+    const resultJson = JSON.parse(resultText)
+    
+    // Update report with success
+    await supabase
+      .from('ai_reports')
+      .update({
+        status: 'succeeded',
+        model: completion.model,
+        result_json: resultJson,
+        result_text: renderHumanSummary(resultJson),
+        latency_ms: Date.now() - started
+      })
+      .eq('id', report.id)
+    
+    res.json({ status: 'succeeded', report_id: report.id })
+    
+  } catch (error) {
+    // Update report with failure
+    await supabase
+      .from('ai_reports')
+      .update({
+        status: 'failed',
+        error_code: error.code || 'MODEL_ERROR',
+        error_message: error.message,
+        latency_ms: Date.now() - started
+      })
+      .eq('id', report.id)
+    
+    res.status(500).json({ error: error.message })
+  }
+})
+```
+
+5. Create endpoint: `GET /v1/insights/latest`
+```typescript
+app.get('/v1/insights/latest', async (req, res) => {
+  const userId = req.query.user_id // TODO: Get from auth
+  
+  const { data: report } = await supabase
+    .from('ai_reports')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+  
+  if (!report) {
+    return res.json({ status: 'none' })
+  }
+  
+  res.json(report)
+})
+```
+
+6. Add SYSTEM_PROMPT (use JSON schema from original spec)
+
+**Testing:**
+- Submit survey
+- Call `/v1/insights/generate`
+- Verify AI report created with status 'processing'
+- Verify OpenAI called successfully
+- Check result_json matches schema
+
+---
+
+#### **Story 9: Results Page** (4 hours)
+**Goal:** Display AI insights in structured format
+
+**Files to create:**
+- `app/insights/latest/page.tsx`
+
+**Tasks:**
+
+1. Create results page:
+```typescript
+'use client'
+
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+
+export default function InsightsPage() {
+  const [report, setReport] = useState<any>(null)
+  
+  useEffect(() => {
+    async function loadReport() {
+      const { data } = await supabase
+        .from('ai_reports')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'succeeded')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      
+      setReport(data)
+    }
+    loadReport()
+  }, [])
+  
+  if (!report) return <div>Loading...</div>
+  
+  const insights = report.result_json
+  
+  return (
+    <div className="max-w-4xl mx-auto p-6">
+      <h1>Your Health Insights</h1>
+      
+      {/* Summary */}
+      <section>
+        <h2>Summary</h2>
+        <p>{insights.summary}</p>
+      </section>
+      
+      {/* Root Causes */}
+      <section>
+        <h2>Potential Root Causes</h2>
+        {insights.root_causes?.map((cause, i) => (
+          <div key={i}>
+            <h3>{cause.name}</h3>
+            <p>{cause.description}</p>
+            <span>Confidence: {(cause.confidence * 100).toFixed(0)}%</span>
+          </div>
+        ))}
+      </section>
+      
+      {/* Education */}
+      <section>
+        <h2>Understanding Your Symptoms</h2>
+        <ul>
+          {insights.education?.map((item, i) => (
+            <li key={i}>{item}</li>
+          ))}
+        </ul>
+      </section>
+      
+      {/* 3-5 Week Outlook */}
+      <section>
+        <h2>What to Expect</h2>
+        <p>{insights.outlook_3_5_weeks}</p>
+      </section>
+      
+      {/* Supplements */}
+      <section>
+        <h2>Recommended Supplements</h2>
+        {insights.supplements?.map((supp, i) => (
+          <div key={i}>
+            <h3>{supp.name}</h3>
+            <p>Dose: {supp.dose}</p>
+            <p>Timing: {supp.timing}</p>
+            <p>Duration: {supp.duration}</p>
+            {supp.cautions && <p className="text-yellow-600">⚠️ {supp.cautions}</p>}
+          </div>
+        ))}
+      </section>
+      
+      {/* Foods */}
+      <section>
+        <h2>Nutrition Guidance</h2>
+        <div>
+          <h3>Emphasize:</h3>
+          <ul>
+            {insights.foods_emphasize?.map((food, i) => (
+              <li key={i}>{food}</li>
+            ))}
+          </ul>
+          <p>{insights.foods_emphasize_rationale}</p>
+        </div>
+        <div>
+          <h3>Avoid:</h3>
+          <ul>
+            {insights.foods_avoid?.map((food, i) => (
+              <li key={i}>{food}</li>
+            ))}
+          </ul>
+          <p>{insights.foods_avoid_rationale}</p>
+        </div>
+      </section>
+      
+      {/* Cost & Time */}
+      <section>
+        <h2>Investment Required</h2>
+        <p>Monthly Cost: ${insights.monthly_cost_usd}</p>
+        <p>Daily Time: {insights.daily_time_minutes} minutes</p>
+      </section>
+      
+      {/* Next Steps */}
+      <section>
+        <h2>Next Steps</h2>
+        <ol>
+          {insights.next_steps?.map((step, i) => (
+            <li key={i}>{step}</li>
+          ))}
+        </ol>
+      </section>
+      
+      {/* Actions */}
+      <div className="flex gap-4">
+        <button onClick={() => window.print()}>Save as PDF</button>
+        <button onClick={() => alert('Share feature TODO P2')}>Share with Coach</button>
+      </div>
+      
+      {/* Disclaimer */}
+      <section className="text-sm text-gray-600">
+        <p>{insights.disclaimer}</p>
+      </section>
+    </div>
+  )
+}
+```
+
+2. Add proper styling with Tailwind
+3. Handle missing/invalid JSON gracefully
+4. Add loading states
+
+**Testing:**
+- View insights page after AI generation
+- Verify all sections render
+- Test with missing data fields
+- Test print functionality
+
+---
+
+#### **Story 10: Error Handling & Polish** (1 hour)
+**Goal:** Add error states and retry logic
+
+**Tasks:**
+1. Add error boundaries to React components
+2. Implement retry button on processing screen
+3. Add user-friendly error messages
+4. Test with failed AI calls
+5. Add basic logging (console.log for now)
+
+---
+
+### Testing Checklist
+
+**End-to-End Flow:**
+- [ ] User logs in
+- [ ] Opens questionnaire
+- [ ] Questions load from database
+- [ ] Answers save on each change
+- [ ] Submit button appears when >3 answered
+- [ ] Redirects to processing screen
+- [ ] Processing animation shows
+- [ ] MCP server calls OpenAI
+- [ ] Results appear on insights page
+- [ ] All sections render correctly
+- [ ] Print works
+
+**Error Cases:**
+- [ ] No internet during save
+- [ ] OpenAI API error
+- [ ] Invalid JSON from AI
+- [ ] Retry button works
+
+---
+
+### POC Scope - Deferred Items
+
+```typescript
+// TODO P2: Video player (replace placeholder)
+// TODO P2: Question versioning & migration UI
+// TODO P2: SSE streaming for AI output
+// TODO P2: Insights history endpoint
+// TODO P2: Server-side PDF generation
+// TODO P2: Full accessibility audit
+// TODO P2: OpenTelemetry tracing
+// TODO P2: Migrate to 1-3 scale UI
+```
+
+---
+
+### Scale Migration Plan (Post-POC)
+
+**When to migrate from 1-5 to 1-3:**
+- After POC validated with stakeholders
+- After user testing confirms scale preference
+- After AI quality verified with mapped values
+
+**Migration steps documented in:** `/docs/scale-migration-plan.md` (TODO)
+
+---
+
 This context should help maintain continuity across Warp sessions and provide comprehensive project understanding for AI assistance.
