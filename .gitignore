@@ -115,3 +115,27 @@ staging-config.local.yml
 # Backup folders
 *backup*/
 *-backup/
+
+# Additional personal files (from untracked list)
+*.numbers
+*.xhtml
+*.heic
+*.mp3
+*.ics
+*.txt
+*.sb-*
+OFICore/
+servlet.txt
+th-*
+edit/
+agent*.json
+YT_*.json
+json_*.json
+shorts_*.json
+My_workflow_*.json
+github_workflow_*.json
+Screenshot_*.jpg
+calendar*.ics
+download.ics
+etsy_*
+icareupdate*.numbers

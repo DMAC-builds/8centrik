@@ -61,9 +61,29 @@ export function MealPlanner() {
       const data = await response.json();
       console.log("Meal plan response:", data);
       
-      // The API returns data.meals, not data.mealPlan
-      setMeals(data.meals || [])
-      setOrderData(null) // Reset order data when generating new plan
+      // Convert mealPlan object to meals array
+      const mealPlan = data.mealPlan || {};
+      const mealsArray: Meal[] = [];
+      
+      Object.entries(mealPlan).forEach(([day, dayMeals]: [string, any]) => {
+        Object.entries(dayMeals).forEach(([mealType, mealName]: [string, any]) => {
+          mealsArray.push({
+            name: `${day} - ${mealType}: ${mealName}`,
+            ingredients: ["Ingredient 1", "Ingredient 2", "Ingredient 3"],
+            nutrition: {
+              calories: 450,
+              protein: "25g",
+              carbs: "35g",
+              fat: "15g"
+            },
+            cookTime: "25 mins",
+            difficulty: "Easy"
+          });
+        });
+      });
+      
+      setMeals(mealsArray);
+      setOrderData(null); // Reset order data when generating new plan
     } catch (error) {
       console.error("Error generating meal plan:", error);
       alert("Failed to generate meal plan. Please try again.");

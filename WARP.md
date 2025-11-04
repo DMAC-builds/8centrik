@@ -521,24 +521,337 @@ v0-app/
 - [ ] Document deployment process
 - [ ] Create rollback procedure
 
-## Survey → AI Insights Feature (In Progress)
+## Survey → AI Insights Feature ✅ COMPLETED (POC)
 
-### Current Status: Database Layer Complete ✅
+### Status: Fully Working POC - End-to-End Flow Complete
 
 **Completed:**
-- ✅ Database schema created (survey_questions, survey_sessions, survey_responses, ai_reports)
-- ✅ RLS policies with auth.uid()
-- ✅ Connected to production Supabase (sfirayzjkugowzeyuyns)
-- ✅ Migration script: `database/migrations/001_survey_ai_insights.sql`
-- ✅ Seed script: `scripts/seed-survey-questions.js`
-- ✅ Feature branch: `feature/survey-ai-insights`
+- ✅ Simplified questionnaire with hardcoded 8 questions
+- ✅ Survey UI with 1-5 slider scale (React component)
+- ✅ OpenAI integration in MCP server (port 3001)
+- ✅ AI insights endpoint: `POST /api/insights/generate`
+- ✅ Results display page (`app/components/onboarding/insights-results.tsx`)
+- ✅ Scale mapping (1-5 → 1-3 for AI processing)
+- ✅ Integrated into onboarding flow (step 3)
+- ✅ OpenAI API key configured (project: 8centrik)
+- ✅ Full flow tested: Survey → AI Analysis → Formatted Insights
 
-**POC Approach:**
-- Using 1-5 scale (existing UI)
-- Will map to 1-3 for AI processing
-- Migration to 1-3 scale deferred to post-POC
+**Implementation Details:**
+- **Questionnaire**: `app/components/onboarding/onboarding-questionnaire.tsx`
+  - 8 hardcoded questions matching database seed
+  - Local state management (no auth required)
+  - Returns answers to parent via `onComplete({ questionnaire: answers })`
+- **AI Endpoint**: `mcp-kroger-server/src/index.ts` (line 147)
+  - Model: `gpt-4o-mini`
+  - Temperature: 0.3
+  - Minimal system prompt (~50 tokens)
+  - JSON response format
+  - Maps 1-5 scale to 1-3 before sending to AI
+- **Results Page**: `app/components/onboarding/insights-results.tsx`
+  - Fetches from `/api/insights/generate`
+  - Displays: summary, top concerns, recommendations, supplements, foods
+  - Loading state with spinner
+  - Error handling with retry
 
-### Implementation Roadmap (Remaining Work: ~16 hours)
+**POC Approach (Simplified for Speed):**
+- Hardcoded questions in React component (no database fetch)
+- No authentication required
+- No session persistence
+- Answers stored in local state only
+- Direct OpenAI API call (Chat Completions API)
+- Simple system prompt to minimize token usage
+- JSON response format enforced
+
+**Future Enhancements (Post-POC):**
+- Load questions from `survey_questions` table
+- Implement user authentication and session management
+- Add RLS policies for data security
+- Save responses to `survey_responses` table
+- Create `ai_reports` table records
+- Migrate UI to 1-3 scale (instead of 1-5)
+- Add response persistence and resume capability
+
+## Kroger Integration ✅ COMPLETED (POC with Mock Data)
+
+### Status: Fully Working with Mock Data
+
+**Completed:**
+- ✅ OAuth flow integration (connect with Kroger account)
+- ✅ Mock token storage for authenticated users
+- ✅ Store selection endpoint (returns mock stores)
+- ✅ Meal plan generation (returns mock weekly plan)
+- ✅ Grocery list generation from meals
+- ✅ Order placement endpoint (mock cart creation)
+- ✅ Integration UI component with multi-step wizard
+- ✅ Full end-to-end flow tested
+
+**Implementation Details:**
+- **OAuth Flow** (`mcp-kroger-server/src/index.ts` line 284-337):
+  - Endpoint: `GET /auth/kroger?userId=xxx`
+  - Generates Kroger OAuth URL with correct scopes
+  - Scopes: `profile.compact cart.basic:write`
+  - Redirect URI: `http://localhost:3001/auth/callback`
+  - On callback: stores mock token, closes popup
+  - No real Kroger API calls (POC approach)
+
+- **Stores Endpoint** (line 339-374):
+  - Endpoint: `GET /api/stores?userId=xxx`
+  - Returns 2 mock Kroger stores in Austin, TX
+  - Requires user to have token in `userTokens` map
+
+- **Meal Plan Generation** (line 216-260):
+  - Endpoint: `POST /api/meal-plan/ai-generate`
+  - Returns mock 5-day meal plan (Monday-Friday)
+  - Includes breakfast, lunch, snack, dinner for each day
+  - Frontend converts to meals array format
+
+- **Grocery List** (line 262-281):
+  - Endpoint: `POST /api/meal-plan/grocery-list`
+  - Returns 6 mock grocery items with prices
+  - Items: salmon, beef, chicken, spinach, berries, avocados
+
+- **Order Placement** (line 376-404):
+  - Endpoint: `POST /api/orders`
+  - Accepts: userId, items array, storeId
+  - Calculates total price from items
+  - Returns: sessionId, cart URL, estimated total
+  - Mock success response (no real cart creation)
+
+**UI Components:**
+- **Kroger Integration Modal**: `app/components/kroger-integration.tsx`
+  - 4-step wizard: Authorize → Verify → Setup Stores → Complete
+  - Opens OAuth in popup window
+  - Handles connection status
+  - Shows disconnect option when connected
+
+- **Meal Planner**: `app/components/meal-planner.tsx`
+  - Generate meal plan button
+  - Displays meals in card format
+  - Order groceries button
+  - Shows order progress and success modal
+  - Opens Kroger cart URL on success
+
+**Kroger API Configuration:**
+- Client ID: `healthapp-bbc6mg8f`
+- Redirect URI: `http://localhost:3001/auth/callback`
+- Environment: Development
+- Status: Mock data only (no real API integration)
+
+**POC Trade-offs:**
+- ✅ Full UX flow works end-to-end
+- ✅ OAuth authentication tested with real Kroger login
+- ✅ No database persistence (in-memory tokens)
+- ✅ Mock product data instead of real Kroger catalog
+- ✅ No real cart creation on Kroger side
+- ✅ Preserves all UI/UX for future real integration
+
+**Future Enhancements (Production):**
+- Implement real Kroger API token exchange
+- Store tokens in Supabase `user_kroger_tokens` table
+- Fetch real products from Kroger API
+- Implement actual cart creation via Kroger API
+- Add product search and matching logic
+- Handle token refresh flow
+- Add error handling for API failures
+- Implement cart session tracking in `grocery_cart_sessions` table
+
+---
+
+## 🎯 Next Story: Login/Signup with User Persistence (PRIORITY)
+
+### Epic: Authentication & User Onboarding Flow
+
+**User Story:**
+- **As a** returning user, **I want** to log in to my account **so that** I can access my saved data without going through the setup flow again
+- **As a** new user, **I want** to sign up for an account **so that** I can use the health app and save my progress
+
+### Acceptance Criteria
+
+**AC1: Login Page is First Screen**
+- When user opens `http://localhost:3000`, they see login page (not onboarding)
+- Login page shows: Email field, Password field, "Log In" button, "Sign Up" link
+- Design matches app's green/blue gradient theme
+
+**AC2: New User Signup Flow**
+- User clicks "Sign Up" link → navigates to signup page
+- Signup form shows: Email, Password, Confirm Password fields
+- User submits → account created in Supabase Auth
+- After signup → redirect to onboarding flow (step 1: Profile Creation)
+- User completes onboarding → flag stored in `user_profiles.onboarding_completed_at`
+
+**AC3: Returning User Login Flow**
+- User enters email/password → clicks "Log In"
+- Credentials validated via Supabase Auth
+- If onboarding complete → redirect to main app (Home/Dashboard)
+- If onboarding NOT complete → redirect to onboarding flow (resume where left off)
+
+**AC4: Session Persistence**
+- User remains logged in after page refresh (Supabase session)
+- Protected routes check auth status before rendering
+- Logout button available in main app
+- After logout → redirect to login page
+
+**AC5: Error Handling**
+- Invalid credentials → show error message
+- Weak password → show validation error
+- Email already exists → show error on signup
+- Network error → show retry option
+
+### Files to Create
+- `app/login/page.tsx` - Login page
+- `app/signup/page.tsx` - Signup page
+- `app/home/page.tsx` - Main app (post-onboarding)
+
+### Files to Modify
+- `app/page.tsx` - Check auth before showing onboarding
+- `app/components/onboarding-flow.tsx` - Accept user ID, mark onboarding complete
+
+### Database Setup
+```sql
+-- Ensure user_profiles table exists
+CREATE TABLE IF NOT EXISTS user_profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT,
+  full_name TEXT,
+  onboarding_completed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Policy: Users can read their own profile
+CREATE POLICY "Users can view own profile" ON user_profiles
+  FOR SELECT USING (auth.uid() = id);
+
+-- Policy: Users can update their own profile
+CREATE POLICY "Users can update own profile" ON user_profiles
+  FOR UPDATE USING (auth.uid() = id);
+
+-- Policy: Allow insert for new signups
+CREATE POLICY "Allow insert on signup" ON user_profiles
+  FOR INSERT WITH CHECK (true);
+```
+
+### Estimated Time: 3-4 hours
+- Login page: 45 mins
+- Signup page: 45 mins
+- Auth routing logic: 1 hour
+- Home page setup: 45 mins
+- Testing & fixes: 45 mins
+
+### Success Metrics (POC)
+- ✅ User can sign up and data is stored in Supabase
+- ✅ User can log in with credentials
+- ✅ New users go through onboarding once
+- ✅ Returning users skip onboarding and go to home
+- ✅ Session persists across page refreshes
+- ✅ Logout works and redirects properly
+
+### POC Approach
+- Skip email verification for speed (users can log in immediately)
+- No password reset flow (post-POC)
+- No social login (post-POC)
+- Simple RLS policies for security
+
+**Full implementation details:** See `docs/user-story-login-auth.md`
+
+---
+
+## 📋 Story Sequence Roadmap (Post-Login Implementation)
+
+### Phase 1: Foundation (Current)
+1. ✅ **Survey → AI Insights** (COMPLETED)
+2. ✅ **Kroger Integration** (COMPLETED)
+3. 🎯 **Login/Signup with User Persistence** (NEXT - 3-4 hours)
+
+### Phase 2: Data Persistence & User Experience (After Login)
+4. **Save Survey Responses to Database** (4-5 hours)
+   - Load questions from `survey_questions` table
+   - Store responses in `survey_responses` table
+   - Implement session resume capability
+   - Add RLS policies for user data
+
+5. **Store AI Insights in Database** (3-4 hours)
+   - Save AI reports to `ai_reports` table
+   - Create insights history page
+   - Allow users to view past reports
+   - Add "Regenerate" button for new insights
+
+6. **User Profile Management** (3-4 hours)
+   - Display user name in header
+   - Settings page (name, email, password change)
+   - Profile photo upload (optional)
+   - Account deletion (with confirmation)
+
+### Phase 3: Enhanced Features (MVP-Ready)
+7. **Dashboard/Home Page Improvements** (4-5 hours)
+   - Show recent AI insights summary
+   - Quick access to meal plans
+   - Progress tracking (surveys completed, meals planned)
+   - Health score visualization
+
+8. **Meal Plan History & Favorites** (4-5 hours)
+   - Save generated meal plans to database
+   - View past meal plans
+   - Mark meals as favorites
+   - Recipe details and instructions
+
+9. **Kroger Integration - Real API** (8-10 hours)
+   - Implement real token exchange
+   - Store tokens in `user_kroger_tokens` table
+   - Fetch real products from Kroger API
+   - Handle token refresh flow
+   - Error handling for API failures
+
+### Phase 4: Polish & Production-Ready
+10. **Error Handling & Loading States** (2-3 hours)
+    - Consistent error messages across app
+    - Loading skeletons for async operations
+    - Retry logic for failed requests
+    - Offline mode indicators
+
+11. **Email Verification & Password Reset** (4-5 hours)
+    - Enable Supabase email confirmation
+    - "Forgot password" flow
+    - Email templates customization
+    - Resend verification email option
+
+12. **Testing & Bug Fixes** (5-8 hours)
+    - End-to-end testing of all flows
+    - Mobile responsive fixes
+    - Browser compatibility testing
+    - Performance optimization
+
+### Phase 5: Deployment (When Ready)
+13. **Vercel + Railway Deployment** (3-4 hours)
+    - Deploy frontend to Vercel
+    - Deploy MCP server to Railway
+    - Configure environment variables
+    - Set up custom domain
+    - SSL and security headers
+
+---
+
+## 📊 Story Estimation Summary
+
+**Current POC Complete:**
+- Survey → AI Insights: ✅ Working
+- Kroger Integration: ✅ Working (mock data)
+
+**Immediate Priority (MVP Foundation):**
+- Login/Signup: 3-4 hours (NEXT)
+- Survey DB Integration: 4-5 hours
+- AI Insights DB: 3-4 hours
+- User Profile: 3-4 hours
+
+**Total to MVP-Ready:** ~40-50 hours
+**Total to Production:** ~60-75 hours
+
+---
+
+### Implementation Roadmap (Database Integration - Deferred for Now)
 
 #### **Story 2-3: Survey UI with Database Loading** (3 hours)
 **Goal:** Update questionnaire component to load questions from database

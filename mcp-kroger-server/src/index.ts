@@ -2,10 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import OpenAI from 'openai';
 dotenv.config();
 
 import { KrogerAPI } from './kroger-api';
 import { KrogerDatabase } from './database';
+
+// Initialize OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || ''
+});
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -137,6 +143,76 @@ app.get('/api/products/search', async (req, res) => {
   }
 });
 
+// Survey AI Insights Generation
+app.post('/api/insights/generate', async (req, res) => {
+  const { answers } = req.body;
+  
+  if (!answers || Object.keys(answers).length === 0) {
+    return res.status(400).json({ error: 'No survey answers provided' });
+  }
+  
+  try {
+    // Map 1-5 scale to 1-3 for AI
+    const mapToThreeScale = (value: number): 1 | 2 | 3 => {
+      if (value <= 2) return 1; // Low
+      if (value <= 4) return 2; // Moderate
+      return 3; // High
+    };
+    
+    // Format answers for AI
+    const questions = [
+      'How often do you feel tired or low energy?',
+      'How often do you experience bloating after meals?',
+      'How would you rate your anxiety levels?',
+      'How often do you crave sugar or processed foods?',
+      'How would you rate your sleep quality?',
+      'How often do you experience digestive issues?',
+      'How stable is your mood throughout the day?',
+      'How would you rate your mental clarity and focus?'
+    ];
+    
+    const formattedAnswers = Object.entries(answers).map(([id, value]) => ({
+      q: questions[parseInt(id) - 1],
+      a: mapToThreeScale(value as number)
+    }));
+    
+    // Call OpenAI with file ID from storage
+    const fileId = process.env.OPENAI_FILE_ID; // Optional: reference uploaded file
+    
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0.3,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a functional medicine health coach. Analyze survey responses and return JSON with: summary, top_concerns, recommendations, supplements (with name and reason), foods_emphasize, foods_avoid.'
+        },
+        {
+          role: 'user',
+          content: JSON.stringify({ survey: formattedAnswers })
+        }
+      ],
+      response_format: { type: 'json_object' }
+    });
+    
+    const resultText = completion.choices[0]?.message?.content || '{}';
+    const insights = JSON.parse(resultText);
+    
+    res.json({
+      success: true,
+      insights,
+      answersCount: Object.keys(answers).length
+    });
+    
+  } catch (error: any) {
+    console.error('OpenAI error:', error.message);
+    res.status(500).json({ 
+      error: 'Failed to generate insights',
+      message: error.message 
+    });
+  }
+});
+
 // AI Meal Plan Generation
 app.post('/api/meal-plan/ai-generate', (req, res) => {
   const { preferences } = req.body;
@@ -215,8 +291,8 @@ app.get('/auth/kroger', (req, res) => {
   // Generate OAuth URL for Kroger
   const authUrl = `https://api.kroger.com/v1/connect/oauth2/authorize?` +
     `client_id=${process.env.KROGER_CLIENT_ID}&` +
-    `redirect_uri=${encodeURIComponent(process.env.KROGER_REDIRECT_URI)}&` +
-    `response_type=code&scope=openid profile.compact cart.basic:write&` +
+    `redirect_uri=${encodeURIComponent(process.env.KROGER_REDIRECT_URI || '')}&` +
+    `response_type=code&scope=profile.compact cart.basic:write&` +
     `state=${userId}`;
   
   res.json({
@@ -234,11 +310,27 @@ app.get('/auth/callback', async (req, res) => {
   }
 
   try {
-    // Exchange code for access token
-    const tokenData = await KrogerAPI.exchangeCodeForToken(code as string);
-    await KrogerDatabase.saveUserToken(userId as string, tokenData);
+    // POC: Mock successful OAuth (skip real Kroger API calls)
+    console.log(`OAuth success for user: ${userId}, code: ${code}`);
+    
+    // Store mock token
+    userTokens[userId as string] = {
+      accessToken: `mock_token_${userId}_${Date.now()}`,
+      expiresAt: Date.now() + (24 * 60 * 60 * 1000)
+    };
 
-    res.redirect(`http://localhost:3000/profile?kroger=connected`);
+    // Close the popup window
+    res.send(`
+      <html>
+        <body>
+          <h2>Success! Kroger Connected</h2>
+          <p>You can close this window and return to the app.</p>
+          <script>
+            setTimeout(() => window.close(), 2000);
+          </script>
+        </body>
+      </html>
+    `);
   } catch (error) {
     handleError(res, 'OAuth process failed', error);
   }
@@ -290,45 +382,21 @@ app.post('/api/orders', async (req, res) => {
   }
 
   try {
-    const session = await KrogerDatabase.createCartSession(userId, items);
-
-    // Iterate over items and add to cart
-    const addedItems: any[] = [];
-    const failedItems: any[] = [];
-
-    for (const item of items) {
-      const product = await KrogerAPI.findBestMatch(item, storeId);
-
-      if (product) {
-        try {
-          await KrogerAPI.addToCart(userId, storeId, product.upc);
-          addedItems.push({ ...product, name: item });
-        } catch (addItemError) {
-          failedItems.push({ item, error: addItemError.message });
-        }
-      } else {
-        failedItems.push({ item, error: 'No matching product found' });
-      }
-
-      // Update cart session progress (simplistic)
-      const progress = Math.floor((addedItems.length / items.length) * 100);
-      await KrogerDatabase.updateCartSession(session.id, { progress, items_added: addedItems, items_failed: failedItems });
-    }
-
-    const cart = await KrogerAPI.getCart(userId);
-    const cartUrl = `https://www.kroger.com/cart`;
-
-    // Final update to session
-    await KrogerDatabase.updateCartSession(session.id, {
-      status: 'completed',
-      kroger_cart_id: cart.cartId,
-      kroger_cart_url: cartUrl
-    });
-
+    // POC: Mock successful order (skip real Kroger API calls)
+    console.log(`Mock order for user: ${userId}, items:`, items.length);
+    
+    const sessionId = `session_${Date.now()}`;
+    const totalPrice = items.reduce((sum: number, item: any) => {
+      const price = parseFloat(item.price?.replace('$', '') || '5.99');
+      return sum + price;
+    }, 0);
+    
     res.json({
       success: true,
+      sessionId,
       message: 'Groceries added to Kroger cart successfully!',
-      cartUrl
+      kroger_cart_url: 'https://www.kroger.com/cart',
+      estimatedTotal: totalPrice.toFixed(2)
     });
   } catch (error) {
     handleError(res, 'Failed to place order', error);

@@ -1,102 +1,137 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Slider } from "@/components/ui/slider"
+import { supabase } from "@/lib/supabase"
+import { Loader2 } from "lucide-react"
 
-const questions = [
-  {
-    id: 1,
-    category: "Fatigue",
-    title: "How often do you feel tired or low energy?",
-    min: 1,
-    max: 5,
-    labels: ["Never", "Rarely", "Sometimes", "Often", "Always"],
-  },
-  {
-    id: 2,
-    category: "Bloating",
-    title: "How often do you experience bloating after meals?",
-    min: 1,
-    max: 5,
-    labels: ["Never", "Rarely", "Sometimes", "Often", "Always"],
-  },
-  {
-    id: 3,
-    category: "Anxiety",
-    title: "How would you rate your anxiety levels?",
-    min: 1,
-    max: 5,
-    labels: ["Very Low", "Low", "Moderate", "High", "Very High"],
-  },
-  {
-    id: 4,
-    category: "Cravings",
-    title: "How often do you crave sugar or processed foods?",
-    min: 1,
-    max: 5,
-    labels: ["Never", "Rarely", "Sometimes", "Often", "Always"],
-  },
-  {
-    id: 5,
-    category: "Sleep",
-    title: "How would you rate your sleep quality?",
-    min: 1,
-    max: 5,
-    labels: ["Very Poor", "Poor", "Fair", "Good", "Excellent"],
-  },
-  {
-    id: 6,
-    category: "Digestion",
-    title: "How often do you experience digestive issues?",
-    min: 1,
-    max: 5,
-    labels: ["Never", "Rarely", "Sometimes", "Often", "Always"],
-  },
-  {
-    id: 7,
-    category: "Mood",
-    title: "How stable is your mood throughout the day?",
-    min: 1,
-    max: 5,
-    labels: ["Very Unstable", "Unstable", "Moderate", "Stable", "Very Stable"],
-  },
-  {
-    id: 8,
-    category: "Focus",
-    title: "How would you rate your mental clarity and focus?",
-    min: 1,
-    max: 5,
-    labels: ["Very Poor", "Poor", "Fair", "Good", "Excellent"],
-  },
-]
+// POC: Using 1-5 scale (will migrate to 1-3 post-POC)
+// TODO P2: Migrate UI to 1-3 radio buttons after validation
+
+interface Question {
+  id: string
+  code: string
+  question_text: string
+  group: string
+  scale_min: number
+  scale_max: number
+  scale_labels: string[]
+}
 
 interface OnboardingQuestionnaireProps {
   onComplete: (data: any) => void
 }
 
 export function OnboardingQuestionnaire({ onComplete }: OnboardingQuestionnaireProps) {
-  const [currentQuestion, setCurrentQuestion] = useState(0)
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<number, number>>({})
+  const [loading, setLoading] = useState(false)
 
-  const question = questions[currentQuestion]
-  const progress = ((currentQuestion + 1) / questions.length) * 100
+  // Hardcoded questions for POC - matches database seed
+  const questions = [
+    {
+      id: 1,
+      code: 'FATIGUE_01',
+      question_text: 'How often do you feel tired or low energy?',
+      group: 'Energy & Fatigue',
+      scale_min: 1,
+      scale_max: 5,
+      scale_labels: ['Never', 'Rarely', 'Sometimes', 'Often', 'Always']
+    },
+    {
+      id: 2,
+      code: 'DIGESTION_01',
+      question_text: 'How often do you experience bloating after meals?',
+      group: 'Digestive Health',
+      scale_min: 1,
+      scale_max: 5,
+      scale_labels: ['Never', 'Rarely', 'Sometimes', 'Often', 'Always']
+    },
+    {
+      id: 3,
+      code: 'MENTAL_01',
+      question_text: 'How would you rate your anxiety levels?',
+      group: 'Mental Health',
+      scale_min: 1,
+      scale_max: 5,
+      scale_labels: ['Very Low', 'Low', 'Moderate', 'High', 'Very High']
+    },
+    {
+      id: 4,
+      code: 'CRAVINGS_01',
+      question_text: 'How often do you crave sugar or processed foods?',
+      group: 'Nutrition & Cravings',
+      scale_min: 1,
+      scale_max: 5,
+      scale_labels: ['Never', 'Rarely', 'Sometimes', 'Often', 'Always']
+    },
+    {
+      id: 5,
+      code: 'SLEEP_01',
+      question_text: 'How would you rate your sleep quality?',
+      group: 'Sleep & Recovery',
+      scale_min: 1,
+      scale_max: 5,
+      scale_labels: ['Very Poor', 'Poor', 'Fair', 'Good', 'Excellent']
+    },
+    {
+      id: 6,
+      code: 'DIGESTION_02',
+      question_text: 'How often do you experience digestive issues?',
+      group: 'Digestive Health',
+      scale_min: 1,
+      scale_max: 5,
+      scale_labels: ['Never', 'Rarely', 'Sometimes', 'Often', 'Always']
+    },
+    {
+      id: 7,
+      code: 'MENTAL_02',
+      question_text: 'How stable is your mood throughout the day?',
+      group: 'Mental Health',
+      scale_min: 1,
+      scale_max: 5,
+      scale_labels: ['Very Unstable', 'Unstable', 'Moderate', 'Stable', 'Very Stable']
+    },
+    {
+      id: 8,
+      code: 'FOCUS_01',
+      question_text: 'How would you rate your mental clarity and focus?',
+      group: 'Cognitive Function',
+      scale_min: 1,
+      scale_max: 5,
+      scale_labels: ['Very Poor', 'Poor', 'Fair', 'Good', 'Excellent']
+    }
+  ]
 
-  const handleAnswer = (value: number) => {
-    setAnswers((prev) => ({ ...prev, [question.id]: value }))
+  const handleAnswer = (questionId: number, value: number) => {
+    setAnswers(prev => ({ ...prev, [questionId]: value }))
   }
 
   const handleNext = () => {
-    if (currentQuestion < questions.length - 1) {
-      setCurrentQuestion((prev) => prev + 1)
-    } else {
-      onComplete({ questionnaire: answers })
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1)
     }
   }
 
+  const handlePrevious = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(prev => prev - 1)
+    }
+  }
+
+  const handleSubmit = () => {
+    // Pass answers to parent component
+    onComplete({ questionnaire: answers })
+  }
+
+  const question = questions[currentQuestionIndex]
+  const progress = ((currentQuestionIndex + 1) / questions.length) * 100
   const currentAnswer = answers[question.id] || 3
+  const answeredCount = Object.keys(answers).length
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
@@ -104,48 +139,71 @@ export function OnboardingQuestionnaire({ onComplete }: OnboardingQuestionnaireP
         <CardHeader>
           <div className="text-center mb-4">
             <div className="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-full mb-4">
-              <span className="text-green-600 font-semibold">{question.category.charAt(0)}</span>
+              <span className="text-green-600 font-semibold">{question.group?.charAt(0) || 'Q'}</span>
             </div>
-            <CardTitle className="text-xl font-bold text-gray-800 mb-2">{question.category}</CardTitle>
+            <CardTitle className="text-xl font-bold text-gray-800 mb-2">{question.group || 'Health Assessment'}</CardTitle>
             <Progress value={progress} className="mb-2" />
             <p className="text-sm text-gray-600">
-              Question {currentQuestion + 1} of {questions.length}
+              Question {currentQuestionIndex + 1} of {questions.length}
             </p>
           </div>
         </CardHeader>
         <CardContent className="space-y-8">
           <div className="text-center">
-            <h3 className="text-lg font-medium mb-6">{question.title}</h3>
+            <h3 className="text-lg font-medium mb-6">{question.question_text}</h3>
 
             <div className="space-y-6">
               <div className="px-4">
                 <Slider
                   value={[currentAnswer]}
-                  onValueChange={(value) => handleAnswer(value[0])}
-                  min={question.min}
-                  max={question.max}
+                  onValueChange={(value) => handleAnswer(question.id, value[0])}
+                  min={question.scale_min}
+                  max={question.scale_max}
                   step={1}
                   className="w-full"
                 />
               </div>
 
               <div className="flex justify-between text-xs text-gray-500 px-2">
-                <span>{question.labels[0]}</span>
-                <span>{question.labels[question.labels.length - 1]}</span>
+                <span>{question.scale_labels[0]}</span>
+                <span>{question.scale_labels[question.scale_labels.length - 1]}</span>
               </div>
 
               <div className="text-center">
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-green-50 rounded-full">
                   <span className="text-2xl font-bold text-green-600">{currentAnswer}</span>
                 </div>
-                <p className="text-sm text-gray-600 mt-2">{question.labels[currentAnswer - 1]}</p>
+                <p className="text-sm text-gray-600 mt-2">{question.scale_labels[currentAnswer - 1]}</p>
               </div>
             </div>
           </div>
 
-          <Button onClick={handleNext} className="w-full bg-green-600 hover:bg-green-700 py-3">
-            {currentQuestion === questions.length - 1 ? "Complete Assessment" : "Next Question"}
-          </Button>
+          <div className="flex gap-2">
+            {currentQuestionIndex > 0 && (
+              <Button 
+                onClick={handlePrevious} 
+                variant="outline"
+                className="w-1/3"
+              >
+                Previous
+              </Button>
+            )}
+            {currentQuestionIndex < questions.length - 1 ? (
+              <Button 
+                onClick={handleNext} 
+                className="flex-1 bg-green-600 hover:bg-green-700 py-3"
+              >
+                Next Question
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleSubmit} 
+                className="flex-1 bg-green-600 hover:bg-green-700 py-3"
+              >
+                Complete Assessment
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

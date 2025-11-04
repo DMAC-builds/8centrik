@@ -1,19 +1,23 @@
 import { createClient } from "@supabase/supabase-js"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+// In Next.js, NEXT_PUBLIC_ variables are replaced at build time
+// They're accessible as plain strings in the bundle
+const supabaseUrl = 'https://sfirayzjkugowzeyuyns.supabase.co'
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmaXJheXpqa3Vnb3d6ZXl1eW5zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA3MjQ2NjksImV4cCI6MjA2NjMwMDY2OX0.UTqfwKAUmgEsdPiqjNkSwTcHvgvcAF49aJpgh9Vy70k'
 
 // Client for frontend operations
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // Client for server-side operations with full access
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-})
+// Only create admin client on server side
+export const supabaseAdmin = typeof window === 'undefined' && process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
+  : supabase // Fallback to regular client on browser
 
 // Keep types for future use but not actively used now
 export type SymptomQuestion = {
