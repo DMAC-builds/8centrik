@@ -180,6 +180,136 @@ This is a Next.js health application that integrates with the Kroger API for gro
 └── package.json          # Main app dependencies
 ```
 
+## 🚀 Feature Development & Deployment Workflow (Optimized)
+
+### Our Proven Process
+This workflow has been validated through successful deployments:
+
+#### Phase 1: Feature Development (Local)
+1. **Create Feature Branch**
+   ```bash
+   git checkout -b feature/feature-name
+   ```
+
+2. **Develop & Test Locally**
+   - Work in Docker containers (`localhost:3000` for frontend, `localhost:3001` for MCP)
+   - Make changes, test immediately with hot reload
+   - Iterate until feature works as expected
+
+3. **User Validation**
+   - "Test the feature at localhost:3000"
+   - User confirms it works before proceeding
+
+#### Phase 2: Deployment (When User Confirms)
+4. **Stage App Files Only**
+   ```bash
+   # Add only project files, exclude personal files
+   git add .gitignore WARP.md app/ lib/ mcp-kroger-server/ components.json database/ docs/
+   ```
+
+5. **Commit with Descriptive Message**
+   ```bash
+   git commit -m "feat: Feature description
+   
+   - Bullet points of changes
+   - What was added/fixed
+   - Any important notes"
+   ```
+
+6. **Push & Merge to Main**
+   ```bash
+   git push origin feature/feature-name  # Backup feature branch
+   git checkout main
+   git merge feature/feature-name
+   git push origin main                  # Triggers Vercel deployment
+   ```
+
+7. **Verify Deployment**
+   - Vercel auto-deploys in 2-3 minutes
+   - Render (backend) auto-deploys from `/mcp-kroger-server`
+   - Check production URLs to confirm
+
+### File Management Rules
+
+#### ✅ Always Commit (Project Files)
+- `app/` - Frontend components and pages
+- `lib/` - Utility functions and configs
+- `mcp-kroger-server/` - Backend API server
+- `database/` - SQL migrations and schemas
+- `docs/` - Documentation and user stories
+- `scripts/` - Utility scripts
+- `WARP.md` - Project context
+- `.gitignore` - Git exclusions
+- `components.json`, `package.json`, etc.
+
+#### ❌ Never Commit (Personal Files)
+- `.env`, `.env.local` - Secrets and API keys
+- `*.numbers`, `*.xhtml`, `*.heic` - Personal documents
+- `*.mp3`, `*.ics`, `*.jpg` - Media files
+- Wedding photos, expense spreadsheets, etc.
+- **Location**: Personal files stored in `~/Documents/8centrik-personal-files/`
+
+### .gitignore Maintenance
+The `.gitignore` file is configured to automatically exclude:
+- Environment files (`.env*`)
+- Personal file extensions (`.numbers`, `.heic`, `.mp3`, etc.)
+- Build artifacts (`node_modules`, `.next`, `dist`)
+- IDE files (`.vscode`, `.idea`)
+
+### Branch Strategy (Simple & Effective)
+```
+main          ─────●─────●─────●──────  (production - auto-deploys to Vercel/Render)
+                    │     │     │
+feature/*     ──────┴─────┴─────┴──────  (development - test locally first)
+```
+
+- **main**: Always production-ready, deploys automatically
+- **feature/***: Development branches, merge only after local testing
+- **No staging branch needed**: Test locally, deploy to main when ready
+
+### Deployment Targets
+
+#### Frontend (Vercel)
+- **Repo**: https://github.com/DMAC-builds/8centrik
+- **Branch**: `main`
+- **Deploy**: Automatic on push to main
+- **URL**: [Your Vercel URL]
+
+#### Backend (Render)
+- **Repo**: https://github.com/DMAC-builds/8centrik
+- **Path**: `/mcp-kroger-server`
+- **Branch**: `main`
+- **Deploy**: Automatic on push to main
+- **URL**: [Your Render URL]
+
+### Quick Reference Commands
+
+```bash
+# Start development
+docker-compose up
+
+# Test at localhost:3000
+# When user confirms feature works...
+
+# Deploy to production
+git add app/ lib/ mcp-kroger-server/ database/ docs/ WARP.md
+git commit -m "feat: Description of changes"
+git push origin feature/feature-name
+git checkout main && git merge feature/feature-name
+git push origin main
+
+# Verify in 2-3 minutes at Vercel/Render URLs
+```
+
+### Key Principles
+1. **Test First**: Always validate locally before deploying
+2. **User Approval**: User confirms "it works" before deployment
+3. **Clean Commits**: Only commit project files, never personal files
+4. **Fast Feedback**: Feature → Test → Deploy → Verify in < 5 minutes
+5. **No Surprises**: User explicitly says "deploy to main" before push
+
+---
+
 ## Warp Agent Instructions
 When helping with this project:
 
@@ -191,6 +321,7 @@ When helping with this project:
 6. **Data Safety**: Use `docker start` rather than recreating containers
 7. **Integration Focus**: Understand the health app → MCP server → Kroger API flow
 8. **Development Flow**: Main development happens in the containers, not on host
+9. **Deployment Flow**: Follow the proven workflow above - test locally, user approves, then deploy
 
 ## Testing & Verification
 - Health check: `curl http://localhost:3001/health`
